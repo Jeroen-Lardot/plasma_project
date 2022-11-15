@@ -1,0 +1,8 @@
+xarray
+IPython
+h5py
+scikit_learn
+pyspedas
+aidapy[ml]
+h5netcdf
+HelioPy==0.15.4
