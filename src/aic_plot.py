@@ -26,8 +26,8 @@ from scipy.ndimage import gaussian_filter
 ### parameters inizialization ###
 
 #set time
-start_time = datetime(2015, 10, 16, 13, 7, 0);
-end_time   = datetime(2015, 10, 16, 13, 8, 0);
+start_time = datetime(2017, 10, 16, 13, 7, 0);
+end_time   = datetime(2017, 10, 16, 13, 8, 0);
 
 #choose mms probe
 probes= 3
@@ -78,11 +78,11 @@ def write_vtk(ds_arr,x,y,z,itime):
 
 
 ### download data  ###
-settings = {'prod': ['i_dist'],
+settings = {'prod': ['i_dist', 'sc_pos', 'sc_att'],
             'probes': probes, 'coords': 'gse', 'mode': 'high_res', 'frame':'gse'}
 
 xr_mms = load_data(mission='mms', start_time=start_time, end_time=end_time, **settings)
-
+print(xr_mms)
 #physical quantities
 mi = 1.67e-27
 e = 0.5*mi*(vmax*1e3)**2
@@ -157,26 +157,6 @@ file.close()
 
 ### various vdf plots ###
 
-### plot distribution cuts ###
-#fcut=fpicart[0,:,:,:]
-
-### plot a cut ###
-# zcut=int(fcut.shape[2]/2)
-# fplan=fcut[:,:,zcut]
-# # x = np.arange(0,fcut.shape[0])
-# # y = np.arange(0,fcut.shape[1])
-# scat=plt.imshow(fplan, cmap='viridis')
-# plt.imshow(fplan, cmap='viridis')
-# plt.colorbar(scat)
-# plt.show
-
-# step=10
-# for cut in range(0, fcut.shape[0], step):
-#     plt.imshow(fcut[:,:,cut], cmap='viridis')
-#     plt.colorbar(scat)
-#     clear_output(wait = True)
-#     plt.pause(1)
-
 ### plot integrating over 1 axis ###
 for i in range (0,Ntimes,10):
     fcut=fpicart[i,:,:,:]
@@ -190,9 +170,6 @@ for i in range (0,Ntimes,10):
     ax3.imshow(ftot3, cmap='jet')
     #plt.colorbar(scat)
 
-# ax1.axis([20, 80, 20, 80])
-# ax2.axis([20, 80, 20, 80])
-# ax3.axis([20, 80, 20, 80])
 
 nx,ny,nz=fpicart.shape[1],fpicart.shape[2],fpicart.shape[3]
 nclusters_plot=[]
@@ -258,40 +235,6 @@ for i in range (0, Ntimes):
 
 
     fcm_labels = best_gmm.predict(gmmdata)
-    
-    
-#     ### Plot clusters ###
-#     fig = plt.figure(figsize=(12, 12))
-#     ax = fig.add_subplot(projection='3d')
-#     ax.scatter(xp,yp,zp,marker='.', c=(fcm_labels+1))
-#     plt.show()
-
-#     ### Plot the bic/aic scores ###
-#     plt.figure(figsize=(8, 6))
-#     spl = plt.subplot(2, 1, 1)
-#     for i, (cv_type, color) in enumerate(zip(cv_types, color_iter)):
-#         xpos = np.array(n_components_range) + 0.2 * (i - 2)
-#         bars.append(
-#             plt.bar(
-#                 xpos,
-#                 info_crit[i * len(n_components_range) : (i + 1) * len(n_components_range)],
-#                 width=0.2,
-#                 color=color,
-#             )
-#         )
-#     plt.xticks(n_components_range)
-#     plt.ylim([info_crit.min() * 1.01 - 0.01 * info_crit.max(), info_crit.max()])
-#     plt.title(information_criterion+" score per model")
-#     xpos = (
-#         np.mod(info_crit.argmin(), len(n_components_range))
-#         + 0.65
-#         + 0.2 * np.floor(info_crit.argmin() / len(n_components_range))
-#     )
-#     plt.text(xpos, info_crit.min() * 0.97 + 0.03 * info_crit.max(), "*", fontsize=14)
-#     spl.set_xlabel("Number of components")
-#     spl.legend([b[0] for b in bars], cv_types)
-#     plt.show()
-
     nclusters_plot.append(best_gmm.n_components)
     info_plot.append(info_crit)
     print('probe:',probes, 'vdf:',i,'n_particles:',n_part,'info:',information_criterion,'gmm:',best_gmm.n_components, best_gmm.covariance_type)
