@@ -139,6 +139,7 @@ class Acquisitor():
         Nx,Ny,Nz= grid_x.shape
         Ntimes=fpi.shape[0]
         fpicart=np.zeros((Ntimes,Nx,Ny,Nz))
+        print(fpi)
 
         for itime in range(0, Ntimes):
             fpi1=fpi[itime,:].ravel()
