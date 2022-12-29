@@ -6,6 +6,11 @@ import scipy.interpolate as ipt
 import aidapy as ap
 import scipy.interpolate as ipt
 import h5py
+import matplotlib.pyplot as plt
+import itertools
+from sklearn.mixture import GaussianMixture
+from matplotlib.colors import LogNorm
+from cycler import cycler
 
 class Acquisitor():
     _mi = 1.67e-27
@@ -109,12 +114,12 @@ class Acquisitor():
             raise ValueError("write_h5 has to be a boolean value.")
         self._write_h5 = write_h5
 
-    def get_data(self, t_start: str, t_end: str) -> None:
+    def get_data(self, t_start: str, t_end: str, mms_analysis: bool) -> None:
         settings = {'prod': ['i_dist'], 'probes': self.probes, 'coords': 'gse', 'mode': 'high_res', 'frame':'gse'}
         self._xr_mms = ap.load_data(mission='mms', start_time=t_start, end_time=t_end, **settings)
-        self.save_data()
+        self.save_data(mms_analysis)
 
-    def save_data(self) -> None:
+    def save_data(self, mms_analysis) -> None:
         phistr='mms{}_dis_phi_brst'.format(self.probes)
         thetastr='mms{}_dis_theta_brst'.format(self.probes)
         energystr='mms{}_dis_energy_brst'.format(self.probes)
@@ -138,17 +143,16 @@ class Acquisitor():
         grid_x, grid_y, grid_z= np.meshgrid(vx,vx,vx, indexing='ij')
         Nx,Ny,Nz= grid_x.shape
         Ntimes=fpi.shape[0]
+        Ntimes = int(Ntimes/100)
         fpicart=np.zeros((Ntimes,Nx,Ny,Nz))
-        print(fpi)
-
         for itime in range(0, Ntimes):
+            print(f"{itime/Ntimes*100}%")
             fpi1=fpi[itime,:].ravel()
             fpicart[itime,:,:,:] = ipt.griddata(points, fpi1, (grid_x, grid_y, grid_z), method='linear')
         
             ### writing vtk file with distributions for paraview ###
             if(self.write_vtk == True):
                 self.write_to_vtk(fpicart[itime,:,:,:],grid_x, grid_y, grid_z,itime)
-
         if (self.write_h5 == True):
             file = h5py.File('outto_tst.h5','w')
             size = fpi.shape
@@ -170,6 +174,131 @@ class Acquisitor():
             size = tt.shape
             file.create_dataset('times',size,'<i8',data=tt)
             file.close()
+        if(mms_analysis):
+            print("Starting MMS Analysis:")
+            ### various vdf plots ###
+
+
+            nx,ny,nz=fpicart.shape[1],fpicart.shape[2],fpicart.shape[3]
+            nclusters_plot=[]
+            info_plot=[]
+
+            ### particle generation from vdf ###
+            for i in range (0, Ntimes):
+                vdf=fpicart[i,:,:,:]
+                vmax=600
+                dv= 2*vmax/(nx-1)
+                v1D= np.arange(-vmax,vmax+dv,dv)
+                vvx,vvy,vvz= np.meshgrid(v1D,v1D,v1D)
+                Np=self.n_part
+
+                f1D=vdf.flatten()
+                fmin= min([j for j in f1D if j>0])
+
+                f1D= np.where(f1D==0, fmin/1000, f1D)
+
+                vx1D=(np.conjugate(vvx).T).flatten()
+                vy1D=(np.conjugate(vvy).T).flatten()
+                vz1D=(np.conjugate(vvz).T).flatten()
+
+                np.random.seed(0)
+                Ng=f1D.shape[0]
+                ranarr=np.random.rand(4,Np)
+                fcum=np.cumsum(f1D);
+
+                fcum=Ng*fcum/fcum[Ng-1]
+
+                NgRange=np.arange(1,Ng+1)
+
+                Pg=np.interp(Ng*ranarr[0,:], fcum.T, NgRange)
+                Pg= 1 + np.floor(Pg)
+                Pg=Pg.astype(int)
+
+                xp=vx1D[Pg] + dv*ranarr[1,:] - dv/2
+                yp=vy1D[Pg] + dv*ranarr[2,:] - dv/2
+                zp=vz1D[Pg] + dv*ranarr[3,:] - dv/2
+                
+                #store data for gmm 
+                gmmdata=np.array([xp,yp,zp])
+                gmmdata=np.conjugate(gmmdata).T
+
+                ### gmm ###
+                lowest_info_crit = np.infty
+                info_crit= []
+                print(f"GMM {i}")
+                print(gmmdata)
+                for n_components in range (1, self.n_components_range):
+
+                    gmm = GaussianMixture(n_components,covariance_type='full' ,reg_covar=0.1, init_params='kmeans', random_state=np.random.RandomState(seed=1234)).fit(gmmdata)
+                    if (self.information_criterion=='aic'): info_crit.append(gmm.aic(gmmdata)) 
+                    elif (self.information_criterion=='bic'): info_crit.append(gmm.bic(gmmdata)) 
+                    
+                    if info_crit[-1] < lowest_info_crit:
+                            lowest_info_crit = info_crit[-1]
+                            best_gmm = gmm
+                
+                info_crit = np.array(info_crit)
+                color_iter = itertools.cycle(["navy", "turquoise", "cornflowerblue", "darkorange"])
+                clf = best_gmm
+                bars = []
+
+
+                fcm_labels = best_gmm.predict(gmmdata)
+                nclusters_plot.append(best_gmm.n_components)
+                info_plot.append(info_crit)
+                print('probe:',self.probes, 'vdf:',i,'n_particles:',self.n_part,'info:',self.information_criterion,'gmm:',best_gmm.n_components, best_gmm.covariance_type)
+
+                ini = clf.means_
+                colors = ["navy"]*len(ini)
+                fig = plt.figure()
+                mycycler = (cycler(color=['blue', 'orange', 'green', 'red','purple', 'brown', 'pink', 'gray', 'olive', 'cyan']))
+
+                plt.rc('axes', prop_cycle=mycycler)
+                ax = fig.add_subplot(projection='3d')
+                for j, color in enumerate(colors):
+                    data = gmmdata[clf.predict(gmmdata) == j]
+                    ax.scatter(data[:, 0], data[:, 1], data[:, 2], marker='.', alpha=0.1)
+                    print(data)
+
+                    ax.scatter(ini[:, 0], ini[:, 1], ini[:,2], s=75, marker="D", c="orange", lw=1.5, edgecolors="black")
+                    ax.grid()
+                ax.set_xlabel('Vx (km/s)')
+                ax.set_ylabel('Vy (km/s)')
+                ax.set_zlabel('Vz (km/s)')
+
+                plt.show()
+                exit()
+                ### plot integrating over 1 axis ###
+                fcut=fpicart[i,:,:,:]
+                ftot1=np.sum(fcut, axis=0)
+                print(ftot1)
+                ftot2=np.sum(fcut, axis=1)
+                ftot3=np.sum(fcut, axis=2)
+                fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
+                fig.suptitle('fpi '+str(i)+' plan: xy,zx,yz')
+                ax1.imshow(ftot1, cmap='jet')
+                ax1.scatter(ini[:, 0], ini[:, 1], s=75, marker="D", c="orange", lw=1.5, edgecolors="black")
+                ax2.imshow(ftot2, cmap='jet')
+                ax3.imshow(ftot3, cmap='jet')
+                #plt.colorbar(scat)
+                plt.show()
+
+
+
+            plt.clf()        
+            plt.plot(nclusters_plot,'bo--')
+            plt.title('probe '+str(self.probes)+' n_particles '+str(self.n_part)+' info '+self.information_criterion)
+            plt.ylabel('gmm ecomponents')
+            plt.xlabel('time')
+            plt.show()
+
+            ### plot aic/bic slope ###
+            cf=plt.imshow(np.transpose(info_plot)/np.amax(info_plot), origin = 'upper', extent=[0,itime,14,1], cmap='jet', aspect='auto')
+
+            plt.xlabel('time')
+            plt.ylabel('n of clusters')
+            # plt.colorbar(cf,format='%.10f')
+            plt.colorbar()
 
     def write_to_vtk(self, ds_arr,x,y,z,itime):
         [nx, ny, nz] = np.shape(ds_arr)

@@ -26,8 +26,8 @@ from scipy.ndimage import gaussian_filter
 ### parameters inizialization ###
 
 #set time
-start_time = datetime(2017, 10, 16, 13, 7, 0);
-end_time   = datetime(2017, 10, 16, 13, 8, 0);
+start_time = datetime(2017, 8, 4, 9, 0, 0);
+end_time   = datetime(2017, 8, 4, 11, 0, 0);
 
 #choose mms probe
 probes= 3
