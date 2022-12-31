@@ -16,7 +16,7 @@ class Acquisitor():
     _mi = 1.67e-27
     _xr_mms = None
     _e = 0
-    def __init__(self, vmax: int = 600, probes: int = 3, grid_dim: int = 50, n_components_range: int = 15, n_part: int = 40000, information_criterion: str = 'bic', write_vtk: bool = False, write_h5: bool = False) -> None:
+    def __init__(self, vmax: int = 600, probes: int = 3, grid_dim: int = 50, n_components_range: int = 20, n_part: int = 40000, information_criterion: str = 'bic', write_vtk: bool = False, write_h5: bool = False) -> None:
         self._vmax = vmax
         self._probes = probes
         self._grid_dim = grid_dim
@@ -242,6 +242,15 @@ class Acquisitor():
                 clf = best_gmm
                 bars = []
 
+                #bic vs nb_components plot
+                fig, ax = plt.subplots(1,1)
+                plt.title('time '+str(i))
+                plt.scatter(range(1, self.n_components_range), info_crit)
+                plt.xlabel('number of components')       
+                plt.ylabel(self.information_criterion)
+                fig.savefig(f'bic_vs_nbcomp_time{i}.png')
+                plt.show()
+                plt.close()
 
                 fcm_labels = best_gmm.predict(gmmdata)
                 nclusters_plot.append(best_gmm.n_components)
@@ -252,36 +261,64 @@ class Acquisitor():
                 colors = ["navy"]*len(ini)
                 fig = plt.figure()
                 mycycler = (cycler(color=['blue', 'orange', 'green', 'red','purple', 'brown', 'pink', 'gray', 'olive', 'cyan']))
+                plt.suptitle('time '+str(i))
 
                 plt.rc('axes', prop_cycle=mycycler)
-                ax = fig.add_subplot(projection='3d')
+                ax = fig.add_subplot(121,projection='3d')
                 for j, color in enumerate(colors):
                     data = gmmdata[clf.predict(gmmdata) == j]
                     ax.scatter(data[:, 0], data[:, 1], data[:, 2], marker='.', alpha=0.1)
-                    print(data)
+                    #print(data)
+                ax.scatter(ini[:, 0], ini[:, 1], ini[:,2], s=40,color='orange', lw=1, edgecolors="black")
 
-                    ax.scatter(ini[:, 0], ini[:, 1], ini[:,2], s=75, marker="D", c="orange", lw=1.5, edgecolors="black")
-                    ax.grid()
+                ax.grid()
                 ax.set_xlabel('Vx (km/s)')
                 ax.set_ylabel('Vy (km/s)')
                 ax.set_zlabel('Vz (km/s)')
 
+                #right panel
+                ax2 = fig.add_subplot(122,projection='3d')
+                ax2.scatter(ini[:, 0], ini[:, 1], ini[:,2], s=40,color='orange', lw=1, edgecolors="black")
+
+                covs = clf.covariances_
+                print(covs)
+                for k in range(best_gmm.n_components):
+                    u = np.linspace(0, 2 * np.pi, 100)
+                    v = np.linspace(0, np.pi, 100)
+
+                    #needs to add 0.01 for the "1sigma" (no more) blobs to be within same v range as data 
+                    x = 0.01*np.outer(np.cos(u), np.sin(v))
+                    y = 0.01*np.outer(np.sin(u), np.sin(v))
+                    z = 0.01*np.outer(np.ones_like(u), np.cos(v))
+
+                    #I admit, the 10000* is wierd, but otherwise, he complains about the shape and now it seems to work
+                    #(unless maybe that the 1sigma regions are wierdly large)
+                    bias = np.array([10000*[ini[k][0]], 10000*[ini[k][1]], 10000*[ini[k][2]]])
+                    ellipsoid = (covs[k] @ np.stack((x, y, z), 0).reshape(3, -1) + bias).reshape(3, *x.shape)
+                    ax2.plot_surface(*ellipsoid,  rstride=4, cstride=4, linewidth=0, alpha=0.2)
+
+                ax2.grid()
+                ax2.set_xlabel('Vx (km/s)')
+                ax2.set_ylabel('Vy (km/s)')
+                ax2.set_zlabel('Vz (km/s)')
+
                 plt.show()
+                fig.savefig(f'3d_plots_time{i}.png',dpi=150)
                 exit()
                 ### plot integrating over 1 axis ###
-                fcut=fpicart[i,:,:,:]
-                ftot1=np.sum(fcut, axis=0)
-                print(ftot1)
-                ftot2=np.sum(fcut, axis=1)
-                ftot3=np.sum(fcut, axis=2)
-                fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
-                fig.suptitle('fpi '+str(i)+' plan: xy,zx,yz')
-                ax1.imshow(ftot1, cmap='jet')
-                ax1.scatter(ini[:, 0], ini[:, 1], s=75, marker="D", c="orange", lw=1.5, edgecolors="black")
-                ax2.imshow(ftot2, cmap='jet')
-                ax3.imshow(ftot3, cmap='jet')
-                #plt.colorbar(scat)
-                plt.show()
+            #     fcut=fpicart[i,:,:,:]
+            #     ftot1=np.sum(fcut, axis=0)
+            #     print(ftot1)
+            #     ftot2=np.sum(fcut, axis=1)
+            #     ftot3=np.sum(fcut, axis=2)
+            #     fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
+            #     fig.suptitle('fpi '+str(i)+' plan: xy,zx,yz')
+            #     ax1.imshow(ftot1, cmap='jet')
+            #     ax1.scatter(ini[:, 0], ini[:, 1], s=75, marker="D", c="orange", lw=1.5, edgecolors="black")
+            #     ax2.imshow(ftot2, cmap='jet')
+            #     ax3.imshow(ftot3, cmap='jet')
+            #     #plt.colorbar(scat)
+            #     plt.show()
 
 
 
@@ -292,13 +329,14 @@ class Acquisitor():
             plt.xlabel('time')
             plt.show()
 
-            ### plot aic/bic slope ###
-            cf=plt.imshow(np.transpose(info_plot)/np.amax(info_plot), origin = 'upper', extent=[0,itime,14,1], cmap='jet', aspect='auto')
+            # ### plot aic/bic slope ###
+            # cf=plt.imshow(np.transpose(info_plot)/np.amax(info_plot), origin = 'upper', extent=[0,itime,self.n_components_range-1,1], cmap='jet', aspect='auto')
 
-            plt.xlabel('time')
-            plt.ylabel('n of clusters')
-            # plt.colorbar(cf,format='%.10f')
-            plt.colorbar()
+            # plt.xlabel('time')
+            # plt.ylabel('n of clusters')
+            # # plt.colorbar(cf,format='%.10f')
+            # plt.colorbar()
+            # plt.show()
 
     def write_to_vtk(self, ds_arr,x,y,z,itime):
         [nx, ny, nz] = np.shape(ds_arr)
