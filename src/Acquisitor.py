@@ -16,7 +16,7 @@ class Acquisitor():
     _mi = 1.67e-27
     _xr_mms = None
     _e = 0
-    def __init__(self, vmax: int = 600, probes: int = 3, grid_dim: int = 50, n_components_range: int = 20, n_part: int = 40000, information_criterion: str = 'bic', write_vtk: bool = False, write_h5: bool = False) -> None:
+    def __init__(self, vmax: int = 600, probes: int = 3, grid_dim: int = 50, n_components_range: int = 17, n_part: int = 40000, information_criterion: str = 'bic', write_vtk: bool = False, write_h5: bool = False) -> None:
         self._vmax = vmax
         self._probes = probes
         self._grid_dim = grid_dim
@@ -143,7 +143,7 @@ class Acquisitor():
         grid_x, grid_y, grid_z= np.meshgrid(vx,vx,vx, indexing='ij')
         Nx,Ny,Nz= grid_x.shape
         Ntimes=fpi.shape[0]
-        Ntimes = int(Ntimes/100)
+        Ntimes = int(Ntimes)
         fpicart=np.zeros((Ntimes,Nx,Ny,Nz))
         for itime in range(0, Ntimes):
             print(f"{itime/Ntimes*100}%")
@@ -248,8 +248,7 @@ class Acquisitor():
                 plt.scatter(range(1, self.n_components_range), info_crit)
                 plt.xlabel('number of components')       
                 plt.ylabel(self.information_criterion)
-                fig.savefig(f'bic_vs_nbcomp_time{i}.png')
-                plt.show()
+                fig.savefig(f'plots/bic_vs_nbcomp_time{i}.png')
                 plt.close()
 
                 fcm_labels = best_gmm.predict(gmmdata)
@@ -272,6 +271,9 @@ class Acquisitor():
                 ax.scatter(ini[:, 0], ini[:, 1], ini[:,2], s=40,color='orange', lw=1, edgecolors="black")
 
                 ax.grid()
+                ax.set_xlim(-650,650)
+                ax.set_ylim(-650,650)
+                ax.set_zlim(-650,650)
                 ax.set_xlabel('Vx (km/s)')
                 ax.set_ylabel('Vy (km/s)')
                 ax.set_zlabel('Vz (km/s)')
@@ -281,7 +283,7 @@ class Acquisitor():
                 ax2.scatter(ini[:, 0], ini[:, 1], ini[:,2], s=40,color='orange', lw=1, edgecolors="black")
 
                 covs = clf.covariances_
-                print(covs)
+                #print(covs)
                 for k in range(best_gmm.n_components):
                     u = np.linspace(0, 2 * np.pi, 100)
                     v = np.linspace(0, np.pi, 100)
@@ -298,13 +300,16 @@ class Acquisitor():
                     ax2.plot_surface(*ellipsoid,  rstride=4, cstride=4, linewidth=0, alpha=0.2)
 
                 ax2.grid()
+                ax2.set_xlim(-650,650)
+                ax2.set_ylim(-650,650)
+                ax2.set_zlim(-650,650)
                 ax2.set_xlabel('Vx (km/s)')
                 ax2.set_ylabel('Vy (km/s)')
                 ax2.set_zlabel('Vz (km/s)')
-
-                plt.show()
-                fig.savefig(f'3d_plots_time{i}.png',dpi=150)
-                exit()
+                plt.tight_layout()
+                fig.savefig(f'plots/3d_plots_time{i}.png',dpi=150)
+                plt.close()
+                #exit()
                 ### plot integrating over 1 axis ###
             #     fcut=fpicart[i,:,:,:]
             #     ftot1=np.sum(fcut, axis=0)
@@ -327,7 +332,9 @@ class Acquisitor():
             plt.title('probe '+str(self.probes)+' n_particles '+str(self.n_part)+' info '+self.information_criterion)
             plt.ylabel('gmm ecomponents')
             plt.xlabel('time')
+            plt.savefig(f'plots/nbcomp_vs_time.png',dpi=150)
             plt.show()
+            plt.close()
 
             # ### plot aic/bic slope ###
             # cf=plt.imshow(np.transpose(info_plot)/np.amax(info_plot), origin = 'upper', extent=[0,itime,self.n_components_range-1,1], cmap='jet', aspect='auto')
