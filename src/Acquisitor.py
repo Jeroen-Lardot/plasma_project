@@ -16,7 +16,7 @@ class Acquisitor():
     _mi = 1.67e-27
     _xr_mms = None
     _e = 0
-    def __init__(self, vmax: int = 600, probes: int = 3, grid_dim: int = 50, n_components_range: int = 17, n_part: int = 40000, information_criterion: str = 'bic', write_vtk: bool = False, write_h5: bool = False) -> None:
+    def __init__(self, vmax: int = 600, probes: int = 3, grid_dim: int = 50, n_components_range: int = 2, n_part: int = 40000, information_criterion: str = 'bic', write_vtk: bool = False, write_h5: bool = False) -> None:
         self._vmax = vmax
         self._probes = probes
         self._grid_dim = grid_dim
@@ -143,7 +143,7 @@ class Acquisitor():
         grid_x, grid_y, grid_z= np.meshgrid(vx,vx,vx, indexing='ij')
         Nx,Ny,Nz= grid_x.shape
         Ntimes=fpi.shape[0]
-        Ntimes = int(Ntimes/2)
+        Ntimes = int(Ntimes)
         fpicart=np.zeros((Ntimes,Nx,Ny,Nz))
         for itime in range(0, Ntimes):
             print(f"{itime/Ntimes*100}%")
@@ -258,67 +258,14 @@ class Acquisitor():
                 print('probe:',self.probes, 'vdf:',i,'n_particles:',self.n_part,'info:',self.information_criterion,'gmm:',best_gmm.n_components, best_gmm.covariance_type)
 
                 ini = clf.means_
-                colors = ["navy"]*len(ini)
-                fig = plt.figure()
-                mycycler = (cycler(color=['blue', 'orange', 'green', 'red','purple', 'brown', 'pink', 'gray', 'olive', 'cyan']))
-                plt.suptitle('time '+str(i))
-
-                plt.rc('axes', prop_cycle=mycycler)
-                ax = fig.add_subplot(121,projection='3d')
-                for j, color in enumerate(colors):
-                    data = gmmdata[clf.predict(gmmdata) == j]
-                    ax.scatter(data[:, 0], data[:, 1], data[:, 2], marker='.', alpha=0.1)
-                    #print(data)
-
                 #Calculate energy
                 gaussian_energies = np.array(ini[:,0])**2+np.array(ini[:,1])**2+np.array(ini[:,2])**2
-                for i in range(len(gaussian_energies)):
-                    data = gmmdata[clf.predict(gmmdata) == i]
-                    gaussian_energies[i] *= len(data)
+                for j in range(len(gaussian_energies)):
+                    data = gmmdata[clf.predict(gmmdata) == j]
+                    gaussian_energies[j] *= len(data)
                 total_energies.append(np.sum(gaussian_energies)/(2*len(gaussian_energies)))
                 timestep.append(i)
 
-                ax.scatter(ini[:, 0], ini[:, 1], ini[:,2], s=40,color='orange', lw=1, edgecolors="black")
-
-                ax.grid()
-                ax.set_xlim(-650,650)
-                ax.set_ylim(-650,650)
-                ax.set_zlim(-650,650)
-                ax.set_xlabel('Vx (km/s)')
-                ax.set_ylabel('Vy (km/s)')
-                ax.set_zlabel('Vz (km/s)')
-
-                #right panel
-                ax2 = fig.add_subplot(122,projection='3d')
-                ax2.scatter(ini[:, 0], ini[:, 1], ini[:,2], s=40,color='orange', lw=1, edgecolors="black")
-
-                covs = clf.covariances_
-                #print(covs)
-                for k in range(best_gmm.n_components):
-                    u = np.linspace(0, 2 * np.pi, 100)
-                    v = np.linspace(0, np.pi, 100)
-
-                    #needs to add 0.01 for the "1sigma" (no more) blobs to be within same v range as data 
-                    x = 0.01*np.outer(np.cos(u), np.sin(v))
-                    y = 0.01*np.outer(np.sin(u), np.sin(v))
-                    z = 0.01*np.outer(np.ones_like(u), np.cos(v))
-
-                    #I admit, the 10000* is wierd, but otherwise, he complains about the shape and now it seems to work
-                    #(unless maybe that the 1sigma regions are wierdly large)
-                    bias = np.array([10000*[ini[k][0]], 10000*[ini[k][1]], 10000*[ini[k][2]]])
-                    ellipsoid = (covs[k] @ np.stack((x, y, z), 0).reshape(3, -1) + bias).reshape(3, *x.shape)
-                    ax2.plot_surface(*ellipsoid,  rstride=4, cstride=4, linewidth=0, alpha=0.2)
-
-                ax2.grid()
-                ax2.set_xlim(-650,650)
-                ax2.set_ylim(-650,650)
-                ax2.set_zlim(-650,650)
-                ax2.set_xlabel('Vx (km/s)')
-                ax2.set_ylabel('Vy (km/s)')
-                ax2.set_zlabel('Vz (km/s)')
-                plt.tight_layout()
-                #fig.savefig(f'plots/3d_plots_time{i}.png',dpi=150)
-                plt.close()
 
                 #exit()
                 ### plot integrating over 1 axis ###
@@ -342,6 +289,7 @@ class Acquisitor():
             plt.ylabel("Total Energy", size=15)
             plt.show()
 
+            np.save("total_energies.npy", [timestep,total_energies],allow_pickle=True)
 
             plt.clf()        
             plt.plot(nclusters_plot,'bo--')
