@@ -16,7 +16,7 @@ class Acquisitor():
     _mi = 1.67e-27
     _xr_mms = None
     _e = 0
-    def __init__(self, vmax: int = 600, probes: int = 3, grid_dim: int = 50, n_components_range: int = 2, n_part: int = 40000, information_criterion: str = 'aic', write_vtk: bool = False, write_h5: bool = False) -> None:
+    def __init__(self, vmax: int = 600, probes: int = 3, grid_dim: int = 50, n_components_range: int = 10, n_part: int = 40000, information_criterion: str = 'bic', write_vtk: bool = False, write_h5: bool = False) -> None:
         self._vmax = vmax
         self._probes = probes
         self._grid_dim = grid_dim
@@ -143,7 +143,7 @@ class Acquisitor():
         grid_x, grid_y, grid_z= np.meshgrid(vx,vx,vx, indexing='ij')
         Nx,Ny,Nz= grid_x.shape
         Ntimes=fpi.shape[0]
-        Ntimes = int(Ntimes)
+        Ntimes = int(Ntimes//100)
         fpicart=np.zeros((Ntimes,Nx,Ny,Nz))
 
 
@@ -265,6 +265,11 @@ class Acquisitor():
                     w = clf.weights_
                     E_therm = 0
                     
+                    som = 0
+                    for weight in w:
+                        som += weight
+                    print('som', som)
+                    exit()
                     for k in range(best_gmm.n_components):
                         E_therm += 0.5*w[k]**2*(covs[k][0][0]+covs[k][1][1]+covs[k][2][2])
                     all_Etherm.append(E_therm)
