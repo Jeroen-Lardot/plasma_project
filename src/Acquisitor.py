@@ -16,7 +16,7 @@ class Acquisitor():
     _mi = 1.67e-27
     _xr_mms = None
     _e = 0
-    def __init__(self, vmax: int = 600, probes: int = 3, grid_dim: int = 50, n_components_range: int = 15, n_part: int = 40000, information_criterion: str = 'bic', write_vtk: bool = False, write_h5: bool = False) -> None:
+    def __init__(self, vmax: int = 600, probes: int = 3, grid_dim: int = 50, n_components_range: int = 17, n_part: int = 40000, information_criterion: str = 'bic', write_vtk: bool = False, write_h5: bool = False) -> None:
         self._vmax = vmax
         self._probes = probes
         self._grid_dim = grid_dim
@@ -143,7 +143,7 @@ class Acquisitor():
         grid_x, grid_y, grid_z= np.meshgrid(vx,vx,vx, indexing='ij')
         Nx,Ny,Nz= grid_x.shape
         Ntimes=fpi.shape[0]
-        Ntimes = int(Ntimes/100)
+        Ntimes = int(Ntimes/2)
         fpicart=np.zeros((Ntimes,Nx,Ny,Nz))
         for itime in range(0, Ntimes):
             print(f"{itime/Ntimes*100}%")
@@ -184,7 +184,10 @@ class Acquisitor():
             info_plot=[]
 
             ### particle generation from vdf ###
+            total_energies = []
+            timestep = []
             for i in range (0, Ntimes):
+                print(f"{i/Ntimes*100}%")
                 vdf=fpicart[i,:,:,:]
                 vmax=600
                 dv= 2*vmax/(nx-1)
@@ -225,10 +228,8 @@ class Acquisitor():
                 ### gmm ###
                 lowest_info_crit = np.infty
                 info_crit= []
-                print(f"GMM {i}")
-                print(gmmdata)
                 for n_components in range (1, self.n_components_range):
-
+                    
                     gmm = GaussianMixture(n_components,covariance_type='full' ,reg_covar=0.1, init_params='kmeans', random_state=np.random.RandomState(seed=1234)).fit(gmmdata)
                     if (self.information_criterion=='aic'): info_crit.append(gmm.aic(gmmdata)) 
                     elif (self.information_criterion=='bic'): info_crit.append(gmm.bic(gmmdata)) 
@@ -242,6 +243,14 @@ class Acquisitor():
                 clf = best_gmm
                 bars = []
 
+                #bic vs nb_components plot
+                fig, ax = plt.subplots(1,1)
+                plt.title('time '+str(i))
+                plt.scatter(range(1, self.n_components_range), info_crit)
+                plt.xlabel('number of components')       
+                plt.ylabel(self.information_criterion)
+                #fig.savefig(f'plots/bic_vs_nbcomp_time{i}.png')
+                plt.close()
 
                 fcm_labels = best_gmm.predict(gmmdata)
                 nclusters_plot.append(best_gmm.n_components)
@@ -252,37 +261,86 @@ class Acquisitor():
                 colors = ["navy"]*len(ini)
                 fig = plt.figure()
                 mycycler = (cycler(color=['blue', 'orange', 'green', 'red','purple', 'brown', 'pink', 'gray', 'olive', 'cyan']))
+                plt.suptitle('time '+str(i))
 
                 plt.rc('axes', prop_cycle=mycycler)
-                ax = fig.add_subplot(projection='3d')
+                ax = fig.add_subplot(121,projection='3d')
                 for j, color in enumerate(colors):
                     data = gmmdata[clf.predict(gmmdata) == j]
                     ax.scatter(data[:, 0], data[:, 1], data[:, 2], marker='.', alpha=0.1)
-                    print(data)
+                    #print(data)
 
-                    ax.scatter(ini[:, 0], ini[:, 1], ini[:,2], s=75, marker="D", c="orange", lw=1.5, edgecolors="black")
-                    ax.grid()
+                #Calculate energy
+                gaussian_energies = np.array(ini[:,0])**2+np.array(ini[:,1])**2+np.array(ini[:,2])**2
+                for i in range(len(gaussian_energies)):
+                    data = gmmdata[clf.predict(gmmdata) == i]
+                    gaussian_energies[i] *= len(data)
+                total_energies.append(np.sum(gaussian_energies)/(2*len(gaussian_energies)))
+                timestep.append(i)
+
+                ax.scatter(ini[:, 0], ini[:, 1], ini[:,2], s=40,color='orange', lw=1, edgecolors="black")
+
+                ax.grid()
+                ax.set_xlim(-650,650)
+                ax.set_ylim(-650,650)
+                ax.set_zlim(-650,650)
                 ax.set_xlabel('Vx (km/s)')
                 ax.set_ylabel('Vy (km/s)')
                 ax.set_zlabel('Vz (km/s)')
 
-                plt.show()
-                exit()
-                ### plot integrating over 1 axis ###
-                fcut=fpicart[i,:,:,:]
-                ftot1=np.sum(fcut, axis=0)
-                print(ftot1)
-                ftot2=np.sum(fcut, axis=1)
-                ftot3=np.sum(fcut, axis=2)
-                fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
-                fig.suptitle('fpi '+str(i)+' plan: xy,zx,yz')
-                ax1.imshow(ftot1, cmap='jet')
-                ax1.scatter(ini[:, 0], ini[:, 1], s=75, marker="D", c="orange", lw=1.5, edgecolors="black")
-                ax2.imshow(ftot2, cmap='jet')
-                ax3.imshow(ftot3, cmap='jet')
-                #plt.colorbar(scat)
-                plt.show()
+                #right panel
+                ax2 = fig.add_subplot(122,projection='3d')
+                ax2.scatter(ini[:, 0], ini[:, 1], ini[:,2], s=40,color='orange', lw=1, edgecolors="black")
 
+                covs = clf.covariances_
+                #print(covs)
+                for k in range(best_gmm.n_components):
+                    u = np.linspace(0, 2 * np.pi, 100)
+                    v = np.linspace(0, np.pi, 100)
+
+                    #needs to add 0.01 for the "1sigma" (no more) blobs to be within same v range as data 
+                    x = 0.01*np.outer(np.cos(u), np.sin(v))
+                    y = 0.01*np.outer(np.sin(u), np.sin(v))
+                    z = 0.01*np.outer(np.ones_like(u), np.cos(v))
+
+                    #I admit, the 10000* is wierd, but otherwise, he complains about the shape and now it seems to work
+                    #(unless maybe that the 1sigma regions are wierdly large)
+                    bias = np.array([10000*[ini[k][0]], 10000*[ini[k][1]], 10000*[ini[k][2]]])
+                    ellipsoid = (covs[k] @ np.stack((x, y, z), 0).reshape(3, -1) + bias).reshape(3, *x.shape)
+                    ax2.plot_surface(*ellipsoid,  rstride=4, cstride=4, linewidth=0, alpha=0.2)
+
+                ax2.grid()
+                ax2.set_xlim(-650,650)
+                ax2.set_ylim(-650,650)
+                ax2.set_zlim(-650,650)
+                ax2.set_xlabel('Vx (km/s)')
+                ax2.set_ylabel('Vy (km/s)')
+                ax2.set_zlabel('Vz (km/s)')
+                plt.tight_layout()
+                #fig.savefig(f'plots/3d_plots_time{i}.png',dpi=150)
+                plt.close()
+
+                #exit()
+                ### plot integrating over 1 axis ###
+            #     fcut=fpicart[i,:,:,:]
+            #     ftot1=np.sum(fcut, axis=0)
+            #     print(ftot1)
+            #     ftot2=np.sum(fcut, axis=1)
+            #     ftot3=np.sum(fcut, axis=2)
+            #     fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
+            #     fig.suptitle('fpi '+str(i)+' plan: xy,zx,yz')
+            #     ax1.imshow(ftot1, cmap='jet')
+            #     ax1.scatter(ini[:, 0], ini[:, 1], s=75, marker="D", c="orange", lw=1.5, edgecolors="black")
+            #     ax2.imshow(ftot2, cmap='jet')
+            #     ax3.imshow(ftot3, cmap='jet')
+            #     #plt.colorbar(scat)
+            #     plt.show()
+
+            plt.plot(timestep, total_energies)
+            plt.grid()
+            plt.xlabel("time", size=15)
+            plt.ylabel("Total Energy", size=15)
+            plt.show()
 
 
             plt.clf()        
@@ -290,15 +348,20 @@ class Acquisitor():
             plt.title('probe '+str(self.probes)+' n_particles '+str(self.n_part)+' info '+self.information_criterion)
             plt.ylabel('gmm ecomponents')
             plt.xlabel('time')
+            plt.savefig(f'plots/nbcomp_vs_time.png',dpi=150)
             plt.show()
+            plt.close()
 
-            ### plot aic/bic slope ###
-            cf=plt.imshow(np.transpose(info_plot)/np.amax(info_plot), origin = 'upper', extent=[0,itime,14,1], cmap='jet', aspect='auto')
 
-            plt.xlabel('time')
-            plt.ylabel('n of clusters')
-            # plt.colorbar(cf,format='%.10f')
-            plt.colorbar()
+
+            # ### plot aic/bic slope ###
+            # cf=plt.imshow(np.transpose(info_plot)/np.amax(info_plot), origin = 'upper', extent=[0,itime,self.n_components_range-1,1], cmap='jet', aspect='auto')
+
+            # plt.xlabel('time')
+            # plt.ylabel('n of clusters')
+            # # plt.colorbar(cf,format='%.10f')
+            # plt.colorbar()
+            # plt.show()
 
     def write_to_vtk(self, ds_arr,x,y,z,itime):
         [nx, ny, nz] = np.shape(ds_arr)
